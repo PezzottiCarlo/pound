@@ -17,12 +17,14 @@ set(PANEL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/panels/ConsolePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/panels/CPUPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/panels/PerformancePanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/panels/ControllerPanel.cpp
 )
 
 set(PANEL_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/panels/ConsolePanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/panels/CPUPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/panels/PerformancePanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/panels/ControllerPanel.h
 )
 
 # Add all GUI sources to the main target

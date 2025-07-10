@@ -18,6 +18,15 @@ namespace Pound::GUI
     {
         Shutdown();
     }
+    TabBar *GUIManager::GetTabBar(const std::string &name) const
+    {
+        auto it = std::find_if(m_tab_bars.begin(), m_tab_bars.end(),
+                               [&name](const std::unique_ptr<TabBar>& bar)
+                               {
+                                   return bar->id == name;
+                               });
+        return (it != m_tab_bars.end()) ? it->get() : nullptr;
+    }
 
     bool GUIManager::Initialize(const std::string &title, int width, int height)
     {
@@ -43,6 +52,9 @@ namespace Pound::GUI
         ImGui_ImplSDL3_InitForOpenGL(window->GetSDLWindow(), window->GetGLContext());
         ImGui_ImplOpenGL3_Init("#version 330");
 
+        // Setup default menus
+        SetupDefaultMenus();
+
         running = true;
         return true;
     }
@@ -60,6 +72,20 @@ namespace Pound::GUI
 
         window.reset();
         running = false;
+    }
+
+    void GUIManager::SetupDefaultMenus()
+    {
+        // Create the default menus in order
+        AddTabs("File");
+        AddTabs("Emulation");
+        
+        // View menu is special - we keep a reference to it
+        view_menu = AddTabs("View");
+        
+        AddTabs("Help");
+        
+        menus_initialized = true;
     }
 
     void GUIManager::RunFrame()
@@ -175,9 +201,19 @@ namespace Pound::GUI
         style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
     }
 
-    void GUIManager::AddPanel(std::shared_ptr<Panel> panel)
+    void GUIManager::AddPanel(std::shared_ptr<Panel> panel, const std::string &shortcut)
     {
+        // Add the panel to our list
         panels.push_back(panel);
+        
+        // Initialize visibility state
+        panel_visibility_states[panel->GetName()] = panel->IsVisible();
+        
+        // If menus are initialized, add to View menu
+        if (menus_initialized && view_menu)
+        {
+            UpdateViewMenu();
+        }
     }
 
     void GUIManager::RemovePanel(const std::string &name)
@@ -189,14 +225,145 @@ namespace Pound::GUI
                                return panel->GetName() == name;
                            }),
             panels.end());
+        
+        panel_visibility_states.erase(name);
+        
+        // Update the View menu
+        if (menus_initialized && view_menu)
+        {
+            UpdateViewMenu();
+        }
+    }
+
+    std::shared_ptr<Panel> GUIManager::GetPanel(const std::string &name) const
+    {
+        auto it = std::find_if(panels.begin(), panels.end(),
+                               [&name](const std::shared_ptr<Panel> &panel)
+                               {
+                                   return panel->GetName() == name;
+                               });
+        return (it != panels.end()) ? *it : nullptr;
+    }
+
+    void GUIManager::UpdateViewMenu()
+    {
+        if (!view_menu)
+            return;
+        
+        // Clear existing items
+        view_menu->items.clear();
+        
+        // Add menu items for each panel
+        for (const auto& panel : panels)
+        {
+            TabItem new_item;
+            new_item.name = panel->GetName();
+            new_item.p_selected = &panel_visibility_states[panel->GetName()];
+            
+            // Capture panel by value in the lambda
+            std::weak_ptr<Panel> weak_panel = panel;
+            new_item.checked_callback = [this, weak_panel](bool checked) {
+                if (auto panel = weak_panel.lock())
+                {
+                    panel->SetVisible(checked);
+                    panel_visibility_states[panel->GetName()] = checked;
+                }
+            };
+            
+            // Add shortcut if needed (you can pass this as parameter or generate automatically)
+            // For now, we'll leave it empty
+            new_item.shortcut = "";
+            
+            view_menu->items.push_back(std::move(new_item));
+        }
     }
 
     TabBar *GUIManager::AddTabs(const std::string &name)
     {
+        // Ensure View is always in third position
+        if (menus_initialized && name != "View")
+        {
+            // Find the position to insert
+            size_t insert_pos = m_tab_bars.size();
+            
+            // If we have 2 or more tabs and this isn't View, make sure View stays in position 2 (index 2)
+            if (m_tab_bars.size() >= 2)
+            {
+                // Check if View exists
+                auto view_it = std::find_if(m_tab_bars.begin(), m_tab_bars.end(),
+                    [](const std::unique_ptr<TabBar>& bar) { return bar->id == "View"; });
+                
+                if (view_it != m_tab_bars.end() && name != "Help")
+                {
+                    // If adding before View position, insert normally
+                    if (m_tab_bars.size() < 3)
+                    {
+                        insert_pos = 2; // Put View at position 2
+                    }
+                }
+            }
+        }
+        
         auto new_bar = std::make_unique<TabBar>();
         new_bar->id = name;
         m_tab_bars.push_back(std::move(new_bar));
         return m_tab_bars.back().get();
+    }
+
+    void GUIManager::AddPanelTab(TabBar *parent_bar, const std::string &tab_name, 
+                                 const std::string &panel_name, const std::string &shortcut)
+    {
+        if (!parent_bar)
+        {
+            LOG_WARNING(Render, "Trying to add a panel-tab to a null TabBar.");
+            return;
+        }
+
+        auto panel = GetPanel(panel_name);
+        if (!panel)
+        {
+            LOG_WARNING(Render, "Panel '%s' not found.", panel_name.c_str());
+            return;
+        }
+
+        TabItem new_item;
+        new_item.name = tab_name;
+        new_item.shortcut = shortcut;
+        new_item.linked_panel_name = panel_name;
+        new_item.p_selected = &panel_visibility_states[panel_name];
+        new_item.checked_callback = [this, panel_name](bool checked) {
+            HandlePanelToggle(panel_name);
+        };
+        parent_bar->items.push_back(std::move(new_item));
+    }
+
+    void GUIManager::AddPanelTab(TabBar *parent_bar, const std::string &tab_name, 
+                                 std::shared_ptr<Panel> panel, const std::string &shortcut)
+    {
+        if (!parent_bar || !panel)
+        {
+            LOG_WARNING(Render, "Invalid parameters for AddPanelTab.");
+            return;
+        }
+
+        // Assicurati che il panel sia stato aggiunto
+        auto existing = GetPanel(panel->GetName());
+        if (!existing)
+        {
+            AddPanel(panel);
+        }
+
+        AddPanelTab(parent_bar, tab_name, panel->GetName(), shortcut);
+    }
+
+    void GUIManager::HandlePanelToggle(const std::string &panel_name)
+    {
+        auto panel = GetPanel(panel_name);
+        if (panel)
+        {
+            bool new_state = panel_visibility_states[panel_name];
+            panel->SetVisible(new_state);
+        }
     }
 
     void GUIManager::AddSubTab(TabBar *parent_bar, const std::string &name, std::function<void()> callback)
@@ -261,7 +428,7 @@ namespace Pound::GUI
 
     void GUIManager::RenderTabBarContents(TabBar &bar)
     {
-        for (const auto &item : bar.items)
+        for (auto &item : bar.items)
         {
             if (item.nested_tabs)
             {
@@ -274,11 +441,27 @@ namespace Pound::GUI
             else
             {
                 const char *shortcut = item.shortcut.empty() ? nullptr : item.shortcut.c_str();
-                if (ImGui::MenuItem(item.name.c_str(), shortcut, item.p_selected))
+                
+                // Se è collegato a un panel, usa il checkbox
+                if (!item.linked_panel_name.empty() || item.p_selected)
                 {
-                    if (item.p_selected && item.checked_callback)
+                    if (ImGui::MenuItem(item.name.c_str(), shortcut, item.p_selected))
                     {
-                        item.checked_callback(*item.p_selected);
+                        if (item.checked_callback)
+                        {
+                            item.checked_callback(*item.p_selected);
+                        }
+                    }
+                }
+                else
+                {
+                    // Tab normale senza panel collegato
+                    if (ImGui::MenuItem(item.name.c_str(), shortcut))
+                    {
+                        if (item.render_callback)
+                        {
+                            item.render_callback();
+                        }
                     }
                 }
             }

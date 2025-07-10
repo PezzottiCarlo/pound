@@ -13,10 +13,12 @@
 #include "gui/panels/ConsolePanel.h"
 #include "gui/panels/CPUPanel.h"
 #include "gui/panels/PerformancePanel.h"
+#include "gui/panels/ControllerPanel.h"
 
 std::shared_ptr<Pound::GUI::ConsolePanel> console_panel;
 std::shared_ptr<Pound::GUI::CPUPanel> cpu_panel;
 std::shared_ptr<Pound::GUI::PerformancePanel> performance_panel;
+std::shared_ptr<Pound::GUI::ControllerPanel> controller_panel;
 // CPU test function
 void cpuTest()
 {
@@ -41,10 +43,10 @@ void initGUI(Pound::GUI::GUIManager *gui_manager)
     gui_manager->AddPanel(console_panel);
     gui_manager->AddPanel(cpu_panel);
     gui_manager->AddPanel(performance_panel);
+    gui_manager->AddPanel(controller_panel);
 
     Pound::GUI::TabBar *file_menu = gui_manager->AddTabs("File");
     Pound::GUI::TabBar *emulation_menu = gui_manager->AddTabs("Emulation");
-    Pound::GUI::TabBar *view_menu = gui_manager->AddTabs("View");
     Pound::GUI::TabBar *help_menu = gui_manager->AddTabs("Help");
 
     gui_manager->AddSubTab(file_menu, "Open ROM...", []() {});
@@ -59,28 +61,9 @@ void initGUI(Pound::GUI::GUIManager *gui_manager)
                            { LOG_INFO(Render, "Pausing emulation (not implemented yet)"); });
     gui_manager->AddSubTab(emulation_menu, "Resume", []()
                            { LOG_INFO(Render, "Resuming emulation (not implemented yet)"); });
-
-    gui_manager->AddSubTab(view_menu, "Console", console_panel->IsVisible(),
-                           [console_panel](bool is_checked)
-                           {
-                               console_panel->SetVisible(is_checked);
-                           });
-
-    gui_manager->AddSubTab(view_menu, "CPU State", cpu_panel->IsVisible(),
-                           [cpu_panel](bool is_checked)
-                           {
-                               cpu_panel->SetVisible(is_checked);
-                           });
-
-    gui_manager->AddSubTab(view_menu, "Performance", performance_panel->IsVisible(),
-                           [performance_panel](bool is_checked)
-                           {
-                               performance_panel->SetVisible(is_checked);
-                           });
-
+                           
     gui_manager->AddSubTab(help_menu, "About", []()
                            { LOG_INFO(Render, "Pound Emulator is a pre-alpha project. Visit our GitHub for more information."); });
-
 
     cpu_panel->SetCPUTestCallback(cpuTest);
     console_panel->AddLog("[INFO] Pound Emulator started");
@@ -105,6 +88,7 @@ int main()
     console_panel = std::make_shared<Pound::GUI::ConsolePanel>();
     cpu_panel = std::make_shared<Pound::GUI::CPUPanel>();
     performance_panel = std::make_shared<Pound::GUI::PerformancePanel>();
+    controller_panel = std::make_shared<Pound::GUI::ControllerPanel>();
 
     initGUI(gui_manager.get());
 

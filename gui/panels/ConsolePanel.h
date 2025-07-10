@@ -32,5 +32,5 @@ namespace Pound::GUI
 
         ImVec4 GetLogColor(const std::string &text) const;
     };
-
+    
 } // namespace Pound::GUI
